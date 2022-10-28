@@ -3,10 +3,11 @@ import rawpy
 import numpy as np
 import glob
 import torch
+import os, sys
 from tqdm import tqdm
 
 
-def single_calibrate(images, width=11, height=8, square_size = 30, shrink_factor = 0.5):
+def single_calibrate(images, width=11, height=8, square_size=30, shrink_factor=1, path=None):
     # termination criteria
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 
@@ -38,10 +39,12 @@ def single_calibrate(images, width=11, height=8, square_size = 30, shrink_factor
 
             # Draw and display the corners
             # Show the image to see if pattern is found ! imshow function.
-            img = cv2.drawChessboardCorners(img, (width, height), corners2, ret)
-
-            # cv2.imwrite(path+str(idx)+'.jpg', img)
+            if path is not None:
+                img = cv2.drawChessboardCorners(img, (width, height), corners2, ret)
+                cv2.imwrite(os.path.join(path, "cb", f"CB_{idx}.jpg"), img)
             idx += 1
+        else:
+            sys.exit("No chessboard found in the image.")
 
     ret, mtx, dist, rvecs, tvecs = cv2.calibrateCamera(objpoints, imgpoints, gray.shape[::-1], None, None)
 
@@ -49,7 +52,7 @@ def single_calibrate(images, width=11, height=8, square_size = 30, shrink_factor
 
 
 
-def stereo_calibrate(images1, images2, mtx1=None, mtx2=None, dist1=None, dist2=None, width=11, height=8, square_size = 30, shrink_factor = 0.5):
+def stereo_calibrate(images1, images2, mtx1=None, mtx2=None, dist1=None, dist2=None, width=11, height=8, square_size=30, shrink_factor=1, mask=[0, 0], path=None):
     # termination criteria
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
 
@@ -71,7 +74,7 @@ def stereo_calibrate(images1, images2, mtx1=None, mtx2=None, dist1=None, dist2=N
     imgpoints2_single = []
 
     idx = 0
-    for image1, image2 in tqdm(zip(images1, images2)):
+    for image1, image2 in tqdm(zip(images1, images2), total=len(images1)):
         image1 = cv2.resize(image1, (0,0), fx=shrink_factor, fy=shrink_factor)
         image1 = cv2.cvtColor(image1, cv2.COLOR_RGB2BGR)
         gray1 = cv2.cvtColor(image1, cv2.COLOR_BGR2GRAY)
@@ -93,6 +96,12 @@ def stereo_calibrate(images1, images2, mtx1=None, mtx2=None, dist1=None, dist2=N
             corners1 = cv2.cornerSubPix(gray1, corners1, (11, 11), (-1, -1), criteria)
             corners2 = cv2.cornerSubPix(gray2, corners2, (11, 11), (-1, -1), criteria)
 
+            if not image1.shape == image2.shape:
+                ratio = image2.shape[0] / image1.shape[0]
+                corners1 = corners1 * ratio
+                gray1 = cv2.resize(gray1, (0,0), fx=ratio, fy=ratio)
+                image1 = cv2.resize(image1, (0,0), fx=ratio, fy=ratio)
+
             imgpoints1.append(corners1)
             imgpoints1_single.append(corners1)
             imgpoints2.append(corners2)
@@ -100,43 +109,30 @@ def stereo_calibrate(images1, images2, mtx1=None, mtx2=None, dist1=None, dist2=N
 
             image1_cb = cv2.drawChessboardCorners(image1, (width, height), corners1, ret1)
             image2_cb = cv2.drawChessboardCorners(image2, (width, height), corners2, ret2)
-            cv2.imwrite(path +'cb/left'+str(idx)+'.jpg', image1_cb)
-            cv2.imwrite(path +'cb/right'+str(idx)+'.jpg', image2_cb)
+            if path is not None:
+                os.makedirs(os.path.join(path, "cb"), exist_ok=True)
+                cv2.imwrite(os.path.join(path, "cb", f"1_{idx}.jpg"), image1_cb)
+                cv2.imwrite(os.path.join(path, "cb", f"2_{idx}.jpg"), image2_cb)
 
-        elif ret1:
-            objpoints1_single.append(objp)
-            corners1 = cv2.cornerSubPix(gray1, corners1, (11, 11), (-1, -1), criteria)
-            imgpoints1_single.append(corners1)
-            
-            image1_cb = cv2.drawChessboardCorners(image1, (width, height), corners1, ret1)
-            cv2.imwrite(path +'cb/left'+str(idx)+'.jpg', image1_cb)
-        elif ret2:
-            objpoints2_single.append(objp)
-            corners2 = cv2.cornerSubPix(gray2, corners2, (11, 11), (-1, -1), criteria)
-            imgpoints2_single.append(corners2)
-            
-            image2_cb = cv2.drawChessboardCorners(image2, (width, height), corners2, ret2)
-            cv2.imwrite(path +'cb/right'+str(idx)+'.jpg', image2_cb)
-            # Draw and display the corners
-            # Show the image to see if pattern is found ! imshow function.
-            # img1 = cv2.drawChessboardCorners(image1, (width, height), corners1, ret1)
-            # img2 = cv2.drawChessboardCorners(image2, (width, height), corners2, ret2)
-            # cv2.imshow('img1', img1)
-            # cv2.imshow('img2', img2)
-            # cv2.waitKey(0)
+        else:
+            sys.exit("No chessboard found in one of the images")
 
         idx += 1 
+
+    ret1, ret2 = False, False
     
-    if all([mtx1, mtx2, dist1, dist2]):
+    if all(mask):
         pass
-    elif all([mtx1, dist1]):
-        ret2, mtx2, dist2, rvecs2, tvecs2 = cv2.calibrateCamera(objpoints2_single, imgpoints2_single, gray2.shape[::-1], None, None)
-    elif all([mtx2, dist2]):
-        ret1, mtx1, dist1, rvecs1, tvecs1 = cv2.calibrateCamera(objpoints1_single, imgpoints1_single, gray1.shape[::-1], None, None)
+    elif mask[0]:
+        ret1 = True
+        ret2, mtx2, dist2, _, _ = cv2.calibrateCamera(objpoints2_single, imgpoints2_single, gray2.shape[::-1], None, None)
+    elif mask[1]:
+        ret1, mtx1, dist1, _, _ = cv2.calibrateCamera(objpoints1_single, imgpoints1_single, gray1.shape[::-1], None, None)
+        ret2 = True
     else:
         # single camera calibration
-        ret1, mtx1, dist1, rvecs1, tvecs1 = cv2.calibrateCamera(objpoints1_single, imgpoints1_single, gray1.shape[::-1], None, None)
-        ret2, mtx2, dist2, rvecs2, tvecs2 = cv2.calibrateCamera(objpoints2_single, imgpoints2_single, gray2.shape[::-1], None, None)
+        ret1, mtx1, dist1, _, _ = cv2.calibrateCamera(objpoints1_single, imgpoints1_single, gray1.shape[::-1], None, None)
+        ret2, mtx2, dist2, _, _ = cv2.calibrateCamera(objpoints2_single, imgpoints2_single, gray2.shape[::-1], None, None)
 
     if ret1 and ret2:
         # stereo calibration
