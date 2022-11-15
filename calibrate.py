@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 def single_calibrate(images, cam_p, width=11, height=8, square_size=30, shrink_factor=1, path=None):
     # termination criteria
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 300, 1e-6)
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.01)
 
     if square_size is None:
         objp = np.zeros((height*width, 3), np.float32)
@@ -68,7 +68,7 @@ def stereo_calibrate(images1, images2, cam1_p, cam2_p, mtx1=None, mtx2=None, dis
         sys.exit("The two images must have the same h/w ratio.")
     
     # termination criteria
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 300, 1e-6)
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.01)
 
     if square_size is None:
         objp = np.zeros((height*width, 3), np.float32)
