@@ -7,7 +7,7 @@ import os, sys
 from tqdm import tqdm
 
 
-def single_calibrate(images, width=11, height=8, square_size=30, shrink_factor=1, path=None):
+def single_calibrate(images, cam_p, width=11, height=8, square_size=30, shrink_factor=1, path=None):
     # termination criteria
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 300, 1e-6)
 
@@ -28,6 +28,9 @@ def single_calibrate(images, width=11, height=8, square_size=30, shrink_factor=1
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
         # Find the chess board corners
+        p1, p2 = cam_p[idx]
+        img = img[p1[1]:p2[1], p1[0]:p2[0]]
+        gray = gray[p1[1]:p2[1], p1[0]:p2[0]]
         ret, corners = cv2.findChessboardCorners(gray, (width, height), cv2.CALIB_CB_ADAPTIVE_THRESH+cv2.CALIB_CB_NORMALIZE_IMAGE)
 
         # If found, add object points, image points (after refining them)
@@ -35,13 +38,18 @@ def single_calibrate(images, width=11, height=8, square_size=30, shrink_factor=1
             objpoints.append(objp)
 
             corners2 = cv2.cornerSubPix(gray, corners, (11, 11), (-1, -1), criteria)
-            imgpoints.append(corners2)
+
 
             # Draw and display the corners
             # Show the image to see if pattern is found ! imshow function.
             if path is not None:
+                os.makedirs(os.path.join(path, "cb"), exist_ok=True)
                 img = cv2.drawChessboardCorners(img, (width, height), corners2, ret)
                 cv2.imwrite(os.path.join(path, "cb", f"CB_{idx}.jpg"), img)
+
+            corners2 += np.array(p1)
+            # print(corners2.shape)
+            imgpoints.append(corners2)
             idx += 1
         else:
             sys.exit("No chessboard found in the image.")
@@ -52,7 +60,7 @@ def single_calibrate(images, width=11, height=8, square_size=30, shrink_factor=1
 
 
 
-def stereo_calibrate(images1, images2, mtx1=None, mtx2=None, dist1=None, dist2=None, width=11, height=8, square_size=30, shrink_factor=1, mask=[0, 0], path=None):
+def stereo_calibrate(images1, images2, cam1_p, cam2_p, mtx1=None, mtx2=None, dist1=None, dist2=None, width=11, height=8, square_size=30, shrink_factor=1, mask=[0, 0], path=None):
 
     shape1, shape2 = images1[0].shape[:2], images2[0].shape[:2]
     ratio1, ratio2 = shape1[0]/shape2[0], shape1[1]/shape2[1]
@@ -89,9 +97,17 @@ def stereo_calibrate(images1, images2, mtx1=None, mtx2=None, dist1=None, dist2=N
         image2 = cv2.cvtColor(image2, cv2.COLOR_RGB2BGR)
         gray2 = cv2.cvtColor(image2, cv2.COLOR_BGR2GRAY)
 
+        p1_1, p1_2 = cam1_p[idx]
+        p2_1, p2_2 = cam2_p[idx]
+
+        image1_crop = image1[p1_1[1]:p1_2[1], p1_1[0]:p1_2[0]]
+        gray1_crop = gray1[p1_1[1]:p1_2[1], p1_1[0]:p1_2[0]]
+        image2_crop = image2[p2_1[1]:p2_2[1], p2_1[0]:p2_2[0]]
+        gray2_crop = gray2[p2_1[1]:p2_2[1], p2_1[0]:p2_2[0]]
+
         # Find the chess board corners
-        ret1, corners1 = cv2.findChessboardCorners(gray1, (width, height), cv2.CALIB_CB_ADAPTIVE_THRESH+cv2.CALIB_CB_NORMALIZE_IMAGE)
-        ret2, corners2 = cv2.findChessboardCorners(gray2, (width, height), cv2.CALIB_CB_ADAPTIVE_THRESH+cv2.CALIB_CB_NORMALIZE_IMAGE)
+        ret1, corners1 = cv2.findChessboardCorners(gray1_crop, (width, height), cv2.CALIB_CB_ADAPTIVE_THRESH+cv2.CALIB_CB_NORMALIZE_IMAGE)
+        ret2, corners2 = cv2.findChessboardCorners(gray2_crop, (width, height), cv2.CALIB_CB_ADAPTIVE_THRESH+cv2.CALIB_CB_NORMALIZE_IMAGE)
 
         if ret1 and ret2:
             objpoints1.append(objp)
@@ -99,8 +115,8 @@ def stereo_calibrate(images1, images2, mtx1=None, mtx2=None, dist1=None, dist2=N
             objpoints2.append(objp)
             objpoints2_single.append(objp)
 
-            corners1 = cv2.cornerSubPix(gray1, corners1, (11, 11), (-1, -1), criteria)
-            corners2 = cv2.cornerSubPix(gray2, corners2, (11, 11), (-1, -1), criteria)
+            corners1 = cv2.cornerSubPix(gray1_crop, corners1, (11, 11), (-1, -1), criteria)
+            corners2 = cv2.cornerSubPix(gray2_crop, corners2, (11, 11), (-1, -1), criteria)
 
             if not image1.shape == image2.shape:
                 ratio = image2.shape[0] / image1.shape[0]
@@ -113,8 +129,8 @@ def stereo_calibrate(images1, images2, mtx1=None, mtx2=None, dist1=None, dist2=N
             imgpoints2.append(corners2)
             imgpoints2_single.append(corners2)
 
-            image1_cb = cv2.drawChessboardCorners(image1, (width, height), corners1, ret1)
-            image2_cb = cv2.drawChessboardCorners(image2, (width, height), corners2, ret2)
+            image1_cb = cv2.drawChessboardCorners(image1_crop, (width, height), corners1, ret1)
+            image2_cb = cv2.drawChessboardCorners(image2_crop, (width, height), corners2, ret2)
             if path is not None:
                 os.makedirs(os.path.join(path, "cb"), exist_ok=True)
                 cv2.imwrite(os.path.join(path, "cb", f"1_{idx}.jpg"), image1_cb)
@@ -123,7 +139,7 @@ def stereo_calibrate(images1, images2, mtx1=None, mtx2=None, dist1=None, dist2=N
         else:
             cv2.imwrite(os.path.join(path, "cb", f"1_{idx}.jpg"), image1)
             cv2.imwrite(os.path.join(path, "cb", f"2_{idx}.jpg"), image2)
-            #sys.exit(f"No chessboard found in one of the images. [{ret1}, {ret2}]")
+            print(f"No chessboard found in one of the images. [{ret1}, {ret2}]")
 
         idx += 1 
 
