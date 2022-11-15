@@ -9,7 +9,7 @@ from tqdm import tqdm
 
 def single_calibrate(images, width=11, height=8, square_size=30, shrink_factor=1, path=None):
     # termination criteria
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 300, 1e-6)
 
     if square_size is None:
         objp = np.zeros((height*width, 3), np.float32)
@@ -53,8 +53,14 @@ def single_calibrate(images, width=11, height=8, square_size=30, shrink_factor=1
 
 
 def stereo_calibrate(images1, images2, mtx1=None, mtx2=None, dist1=None, dist2=None, width=11, height=8, square_size=30, shrink_factor=1, mask=[0, 0], path=None):
+
+    shape1, shape2 = images1[0].shape[:2], images2[0].shape[:2]
+    ratio1, ratio2 = shape1[0]/shape2[0], shape1[1]/shape2[1]
+    if ratio1 != ratio2:
+        sys.exit("The two images must have the same h/w ratio.")
+    
     # termination criteria
-    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 300, 1e-6)
 
     if square_size is None:
         objp = np.zeros((height*width, 3), np.float32)
@@ -115,7 +121,9 @@ def stereo_calibrate(images1, images2, mtx1=None, mtx2=None, dist1=None, dist2=N
                 cv2.imwrite(os.path.join(path, "cb", f"2_{idx}.jpg"), image2_cb)
 
         else:
-            sys.exit("No chessboard found in one of the images")
+            cv2.imwrite(os.path.join(path, "cb", f"1_{idx}.jpg"), image1)
+            cv2.imwrite(os.path.join(path, "cb", f"2_{idx}.jpg"), image2)
+            #sys.exit(f"No chessboard found in one of the images. [{ret1}, {ret2}]")
 
         idx += 1 
 
